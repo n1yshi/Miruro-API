@@ -1,7 +1,5 @@
 # Aegis AntiBot
 
-A JavaScript anti-bot and client protection system. Works like Kasada.
-
 ## How it works
 
 1. Server serves a protected JavaScript SDK to the browser
