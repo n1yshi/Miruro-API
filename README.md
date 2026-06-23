@@ -35,7 +35,10 @@ npm init -y
 ### Step 2: Install dependencies
 
 ```bash
-npm install aegis-antibot express
+mkdir my-protected-app
+cd my-protected-app
+npm init -y
+npm install express git+https://github.com/dein-user/aegis-antibot.git
 npm install -D typescript tsx @types/express @types/node
 ```
 
@@ -69,7 +72,7 @@ async function main() {
   const app = express();
   app.use(express.json());
 
-  // ---- Step 4: Initialize Aegis ----
+  // Setup Aegis
   const aegis = new Aegis({
     apiKey: 'my-secret-key-change-me',
     challengeDifficulty: 3,
@@ -77,7 +80,7 @@ async function main() {
   });
   await aegis.initialize();
 
-  // ---- Step 5: Create the validation middleware ----
+  // Setup request validation
   const middleware = new AegisMiddleware({
     apiKey: 'my-secret-key-change-me',
     requireValidation: true,
@@ -87,17 +90,12 @@ async function main() {
     rateLimitWindow: 60000,
   });
 
-  // ---- Step 6: Serve the client SDK ----
-  // The browser loads this script. It handles fingerprinting,
-  // challenge solving, and signing every request automatically.
+  // Serve SDK to browser (fingerprinting, challenges, signing)
   app.get('/aegis/sdk.js', (req, res) => {
     res.type('js').send(aegis.build.generateSDK());
   });
 
-  // ---- Step 7: Session endpoint ----
-  // The browser calls this after loading the SDK.
-  // It sends a fingerprint, the server evaluates the risk,
-  // and returns a session token (plus a challenge if needed).
+  // Browser sends fingerprint, server returns token
   app.post('/api/session', async (req, res) => {
     const token = await aegis.createSession();
 
@@ -124,13 +122,7 @@ async function main() {
     res.json({ token });
   });
 
-  // ---- Step 8: Protect your API routes ----
-  // Every request to this route is validated.
-  // The middleware checks session tokens, signatures, and rate limits.
-  // It returns one of three actions:
-  //   "allow"     → request is legitimate, serve the response
-  //   "challenge" → suspicious, needs proof-of-work
-  //   "block"     → malicious, reject immediately
+  // Check if request is safe. Returns allow, challenge, or block
   app.get('/api/protected/data', async (req, res) => {
     const result = await middleware.processRequest({
       headers: req.headers as Record<string, string>,
@@ -152,7 +144,7 @@ async function main() {
     res.json({ success: true, data: 'Protected content' });
   });
 
-  // ---- Step 9: Start the server ----
+  // Start server
   app.listen(3000, () => {
     console.log('Aegis protected server running on http://localhost:3000');
   });
@@ -169,40 +161,12 @@ npx tsx src/server.ts
 
 Open `http://localhost:3000/aegis/sdk.js` in your browser – you should see the protected SDK.
 
-### Step 11: What happens under the hood
-
-```
-Browser                          Server
-  │                                │
-  ├── GET /aegis/sdk.js ──────────►│  (serves protected JS SDK)
-  │◄────────── SDK JavaScript ─────┤
-  │                                │
-  ├── POST /api/session ──────────►│  (sends browser fingerprint)
-  │   { fingerprint: {...} }       │
-  │                                ├── detectAutomation()
-  │                                ├── checkIntegrity()
-  │                                ├── calculateRisk()
-  │                                │   if risk > 40 → createChallenge()
-  │◄────── { token, challenge } ───┤
-  │                                │
-  │   (solves proof-of-work)       │
-  │                                │
-  ├── GET /api/protected/data ────►│  (signed request with token)
-  │   Headers: X-Client-Session    │
-  │            X-Client-Request    ├── middleware.processRequest()
-  │            X-Client-Signature  │   if block  → 403
-  │            X-Client-Version    │   if challenge → 401
-  │◄────── { success: true } ──────┤   if allow  → 200
-```
-
----
-
 ### Applying to your existing API routes
 
 You do not need to restructure your whole app. Protect individual routes by running them through the middleware:
 
 ```typescript
-// Your existing route, now protected
+// Protect your route
 app.post('/api/checkout', async (req, res) => {
   const result = await middleware.processRequest({
     headers: req.headers as Record<string, string>,
@@ -216,7 +180,7 @@ app.post('/api/checkout', async (req, res) => {
     return;
   }
 
-  // Your original logic
+  // Your code here
   const cart = req.body.cart;
   const order = await processOrder(cart);
   res.json({ orderId: order.id });
@@ -230,14 +194,14 @@ app.post('/api/checkout', async (req, res) => {
 Aegis removes `//` comments from code before running it in the protected VM. This prevents attackers from disguising malicious logic inside comments.
 
 ```typescript
-// Automatic: comments stripped before VM execution
+// Auto-strip comments in VM
 const result = await aegis.runProtectedCode(`
   // this comment is removed
   const x = 42;
   x + 1;
 `);
 
-// Manual: strip comments from user input
+// Strip comments from user code
 app.post('/api/execute', async (req, res) => {
   const safeCode = aegis.stripComments(req.body.code);
   const result = await aegis.runProtectedCode(safeCode);
@@ -274,7 +238,7 @@ app.post('/api/protected', async (request, reply) => {
 
 **Next.js (App Router):**
 ```typescript
-// app/api/protected/route.ts
+// File: app/api/protected/route.ts
 import { Aegis, AegisMiddleware } from 'aegis-antibot';
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -305,28 +269,28 @@ import { Aegis } from 'aegis-antibot';
 const aegis = new Aegis({ challengeDifficulty: 3 });
 await aegis.initialize();
 
-// Check for automation
+// Check for bots
 const detection = aegis.detectAutomation();
 
-// Generate browser fingerprint
+// Get browser fingerprint
 const fingerprint = aegis.generateFingerprint();
 
-// Create a challenge
+// Make a proof-of-work challenge
 const challenge = aegis.createChallenge('hash', 3);
 
-// Verify a challenge response
+// Check if challenge was solved
 const result = await aegis.verifyChallenge(response);
 
-// Create a trust session
+// Create a session for trusted clients
 const session = await aegis.createSession();
 
-// Calculate risk score
+// Get risk score
 const risk = aegis.calculateRisk({ detection, fingerprint, challengeResults });
 
-// Run code in the protected VM (comments auto-stripped)
+// Run code in protected VM (comments removed)
 const value = await aegis.runProtectedCode('2 + 3 * 4;');
 
-// Strip comments from any code
+// Remove comments from any code
 const clean = aegis.stripComments(code);
 ```
 
