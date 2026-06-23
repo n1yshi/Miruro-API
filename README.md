@@ -13,7 +13,9 @@
 ## Installation
 
 ```bash
-npm install aegis-antibot
+git clone https://github.com/dein-user/aegis-antibot.git
+cd aegis-antibot
+npm install
 ```
 
 ## Integration Guide
